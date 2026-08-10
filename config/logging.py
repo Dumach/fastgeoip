@@ -38,8 +38,8 @@ log_config = {
             "formatter": "default",
             "class": "logging.handlers.RotatingFileHandler",
             "filename": LOG_PATH + "/access.log",
-            "maxBytes": 1_048_576, # 1 MB
-            "backupCount": 5,  
+            "maxBytes": 1_048_576,  # 1 MB
+            "backupCount": 5,
             "encoding": "utf-8",
         },
     },
