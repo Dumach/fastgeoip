@@ -19,9 +19,14 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 DB_PATH = Path(".") / "db" / "GeoLite2-City.mmdb"
 
+NO_AUTH_PATHS = {"/geoip/health"}
+
 
 @app.middleware("auth")
 async def auth_middleware(request: Request, call_next):
+    if request.url.path in NO_AUTH_PATHS:
+        return await call_next(request)
+
     api_key = request.headers.get("X-API-KEY")
     if api_key not in ACCESS_KEYS:
         logger.info(f"{get_ip_header(request)} - Wrong access key: {api_key}")
@@ -100,3 +105,20 @@ def get_geolookup(request: Request, ip: str):
 
     result = lookup_ip_address(ip)
     return JSONResponse(result)
+
+
+@app.get("/geoip/health")
+@limiter.limit("5/minute")
+def get_health(request: Request):
+    ip = "1.1.1.1"
+
+    try:
+        result = lookup_ip_address(ip)
+    except Exception:
+        logger.exception("Health check failed")
+        return JSONResponse({"detail": "unhealthy"}, status_code=503)
+
+    if not result.get("ip"):
+        return JSONResponse({"detail": "unhealthy"}, status_code=503)
+
+    return JSONResponse({"detail": "healthy", "database": "ok"})
