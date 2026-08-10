@@ -11,22 +11,22 @@ sudo chown www-data:www-data /var/run/uvicorn
 sudo systemctl daemon-reload
 
 # Enable and start the service
-sudo systemctl enable fastgeoip-server.socket
-sudo systemctl enable fastgeoip-server.service
-sudo systemctl start fastgeoip-server.socket
-sudo systemctl start fastgeoip-server.service
+sudo systemctl enable fastgeoip.socket
+sudo systemctl enable fastgeoip.service
+sudo systemctl start fastgeoip.socket
+sudo systemctl start fastgeoip.service
 
 # Check status
-sudo systemctl status fastgeoip-server.service
+sudo systemctl status fastgeoip.service
 
 # View logs
-sudo journalctl -u fastgeoip-server.service -f
+sudo journalctl -u fastgeoip.service -f
 
 # Graceful reload (zero downtime)
-sudo systemctl reload fastgeoip-server.service
+sudo systemctl reload fastgeoip.service
 
 # Restart (brief downtime)
-sudo systemctl restart fastgeoip-server.service
+sudo systemctl restart fastgeoip.service
 
 # Stop the service
-sudo systemctl stop fastgeoip-server.service
+sudo systemctl stop fastgeoip.service
