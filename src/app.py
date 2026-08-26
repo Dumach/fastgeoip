@@ -27,6 +27,9 @@ NO_AUTH_PATHS = {"/geoip/health"}
 
 @app.middleware("auth")
 async def auth_middleware(request: Request, call_next):
+    if request.url.path in NO_AUTH_PATHS:
+        return await call_next(request)
+
     is_authenticated = True
     if request.headers.get("X-API-KEY") not in ACCESS_KEYS:
         is_authenticated = False
@@ -105,3 +108,18 @@ def get_geolookup(request: Request, ip: str) -> JSONResponse:
     if error != "":
         return JSONResponse({"detail": error})
     return JSONResponse(lookup_ip_address(ip).model_dump())
+
+
+@app.get("/geoip/health")
+@limiter.limit("5/minute")
+def get_health(request: Request):
+    ip = "1.1.1.1"
+    try:
+        result = lookup_ip_address(ip)
+    except Exception:
+        logger.exception("Health check failed")
+        return JSONResponse({"detail": "unhealthy"}, status_code=503)
+
+    if not result.ip:
+        return JSONResponse({"detail": "unhealthy"}, status_code=503)
+    return JSONResponse({"detail": "healthy", "database": "ok"})
