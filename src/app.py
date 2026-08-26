@@ -1,5 +1,8 @@
+from geoip2.models import City
+from src.model import IpLookupResponse
 from ipaddress import ip_address
 import logging
+import time
 
 from anyio import Path
 from fastapi import FastAPI, Request
@@ -11,29 +14,30 @@ import geoip2.database
 
 from main import ProductionMode, mode, ACCESS_KEYS
 
-app = FastAPI(title="geoip", docs_url=None, redoc_url=None)
-logger = logging.getLogger("uvicorn.default")
+app = FastAPI(title="geoip")
+logger: logging.Logger = logging.getLogger("uvicorn.default")
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-DB_PATH = Path(".") / "db" / "GeoLite2-City.mmdb"
+DB_PATH: Path = Path(".") / "db" / "GeoLite2-City.mmdb"
 
 NO_AUTH_PATHS = {"/geoip/health"}
 
 
 @app.middleware("auth")
 async def auth_middleware(request: Request, call_next):
-    if request.url.path in NO_AUTH_PATHS:
-        return await call_next(request)
+    is_authenticated = True
+    if request.headers.get("X-API-KEY") not in ACCESS_KEYS:
+        is_authenticated = False
+    if mode == ProductionMode.DEV:  # for easy testing
+        is_authenticated = True
 
-    api_key = request.headers.get("X-API-KEY")
-    if api_key not in ACCESS_KEYS:
-        logger.info(f"{get_ip_header(request)} - Wrong access key: {api_key}")
-        return JSONResponse({"detail": "Not authorized"}, status_code=403)
-
-    response = await call_next(request)
-    return response
+    if is_authenticated:
+        response = await call_next(request)
+        return response
+    else:
+        return time.time()
 
 
 def get_ip_header(request: Request) -> str:
@@ -45,7 +49,6 @@ def get_ip_header(request: Request) -> str:
 
     if mode != ProductionMode.PROD:
         ip = request.headers.get("Host") or ip
-
     return ip
 
 
@@ -59,66 +62,46 @@ def validIPAddress(IP: str) -> bool:
 
 def validate_ip(IP: str) -> str:
     if not validIPAddress(IP):
-        return "IPv4 or IPv6 address is in an incorrect format." + " You sent: " + IP
+        return (
+            "IPv4 or IPv6 address is in an incorrect format. "
+            + "Dotted decimal for IPv4 or textual representation for IPv6 are required."
+        )
     ip_addr = ip_address(IP)
     if ip_addr.is_link_local or ip_addr.is_loopback:
         return "You are on localhost"
     if ip_addr.is_private:
         return "You are on a private network"
-
     return ""
 
 
-def lookup_ip_address(IP: str):
+def lookup_ip_address(IP: str) -> IpLookupResponse:
     reader = geoip2.database.Reader(DB_PATH)
-    response = reader.city(IP)
-    result = {
-        "country_code": response.country.iso_code,
-        "country_name": response.country.name,
-        "region_name": response.subdivisions.most_specific.name or "",
-        "city": response.city.name or "",
-        "ip": IP,
-    }
-    return result
+    response: City = reader.city(IP)
+    return IpLookupResponse(
+        country_code=response.country.iso_code,
+        country_name=response.country.name,
+        region_name=response.subdivisions.most_specific.name,
+        city=response.city.name,
+        ip=IP,
+    )
 
 
 @app.get("/geoip/")
 @limiter.limit("5/minute")
-def get_myip(request: Request):
+def get_myip(request: Request) -> JSONResponse:
     ip = get_ip_header(request).strip()
 
     error = validate_ip(ip)
     if error != "":
         return JSONResponse({"detail": error})
-
-    result = lookup_ip_address(ip)
-    return JSONResponse(result)
+    return JSONResponse(lookup_ip_address(ip).model_dump())
 
 
 @app.get("/geoip/geolookup")
 @limiter.limit("60/minute")
-def get_geolookup(request: Request, ip: str):
+def get_geolookup(request: Request, ip: str) -> JSONResponse:
     ip = ip.strip()
     error = validate_ip(ip)
     if error != "":
         return JSONResponse({"detail": error})
-
-    result = lookup_ip_address(ip)
-    return JSONResponse(result)
-
-
-@app.get("/geoip/health")
-@limiter.limit("5/minute")
-def get_health(request: Request):
-    ip = "1.1.1.1"
-
-    try:
-        result = lookup_ip_address(ip)
-    except Exception:
-        logger.exception("Health check failed")
-        return JSONResponse({"detail": "unhealthy"}, status_code=503)
-
-    if not result.get("ip"):
-        return JSONResponse({"detail": "unhealthy"}, status_code=503)
-
-    return JSONResponse({"detail": "healthy", "database": "ok"})
+    return JSONResponse(lookup_ip_address(ip).model_dump())

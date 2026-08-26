@@ -15,7 +15,7 @@ class ProductionMode(Enum):
     PROD = 3
 
 
-def get_workers(mode: ProductionMode):
+def get_workers(mode: ProductionMode) -> int:
     return (multiprocessing.cpu_count() * 2) + 1 if mode == ProductionMode.PROD else 1
 
 
@@ -37,7 +37,6 @@ SSL_KEY = os.environ.get("SSL_KEY")
 ACCESS_KEYS = [
     k.strip() for k in os.environ.get("ACCESS_KEY", "").split(",") if k.strip()
 ]
-
 
 log_level = "info"
 if mode == ProductionMode.DEBUG:
