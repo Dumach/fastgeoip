@@ -34,9 +34,7 @@ PORT = int(os.environ.get("PORT", 8080))
 
 SSL_CERT = os.environ.get("SSL_CERT")
 SSL_KEY = os.environ.get("SSL_KEY")
-ACCESS_KEYS = [
-    k.strip() for k in os.environ.get("ACCESS_KEY", "").split(",") if k.strip()
-]
+ACCESS_KEYS = [k.strip() for k in os.environ.get("ACCESS_KEY", "").split(",") if k.strip()]
 
 log_level = "info"
 if mode == ProductionMode.DEBUG:

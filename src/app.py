@@ -2,7 +2,6 @@ from geoip2.models import City
 from src.model import IpLookupResponse
 from ipaddress import ip_address
 import logging
-import time
 
 from anyio import Path
 from fastapi import FastAPI, Request
@@ -40,7 +39,7 @@ async def auth_middleware(request: Request, call_next):
         response = await call_next(request)
         return response
     else:
-        return time.time()
+        return JSONResponse({"detail": "Invalid API key"}, status_code=403)
 
 
 def get_ip_header(request: Request) -> str:
