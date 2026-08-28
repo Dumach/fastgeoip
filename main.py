@@ -1,5 +1,4 @@
 from enum import Enum
-import multiprocessing
 
 import uvicorn
 import os
@@ -16,7 +15,19 @@ class ProductionMode(Enum):
 
 
 def get_workers(mode: ProductionMode) -> int:
-    return (multiprocessing.cpu_count() * 2) + 1 if mode == ProductionMode.PROD else 1
+    """
+    Get count of uvicorn workers.
+
+    When PROD it utilizes the max count of cores * 2 + 1.
+    WORKER_COUNT env var can override it.
+    """
+    import multiprocessing
+
+    count: int = 1
+    if mode == ProductionMode.PROD:
+        count = (multiprocessing.cpu_count() * 2) + 1
+    count = int(os.environ.get("WORKER_COUNT", count))
+    return count
 
 
 env = os.environ.get("ENVIRONMENT", "PROD").strip().lower()
