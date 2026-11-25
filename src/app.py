@@ -1,9 +1,9 @@
 from geoip2.models import City
+from src.config import Environment, get_settings
 from src.model import IpLookupResponse
 from ipaddress import ip_address
 import logging
 
-from anyio import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -11,15 +11,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 import geoip2.database
 
-from main import ProductionMode, mode, ACCESS_KEYS
-
 app = FastAPI(title="geoip")
 logger: logging.Logger = logging.getLogger("uvicorn.default")
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-DB_PATH: Path = Path(".") / "db" / "GeoLite2-City.mmdb"
 
 NO_AUTH_PATHS = {"/geoip/health"}
 
@@ -29,10 +25,11 @@ async def auth_middleware(request: Request, call_next):
     if request.url.path in NO_AUTH_PATHS:
         return await call_next(request)
 
+    settings = get_settings()
     is_authenticated = True
-    if request.headers.get("X-API-KEY") not in ACCESS_KEYS:
+    if request.headers.get("X-API-KEY") not in settings.access_keys:
         is_authenticated = False
-    if mode == ProductionMode.DEV:  # for easy testing
+    if settings.environment == Environment.DEV:  # for easy testing
         is_authenticated = True
 
     if is_authenticated:
@@ -49,7 +46,7 @@ def get_ip_header(request: Request) -> str:
     elif not validIPAddress(ip):
         ip = request.headers.get("HTTP_X_FORWARDED_FOR", "")
 
-    if mode != ProductionMode.PROD:
+    if get_settings().environment != Environment.PROD:
         ip = request.headers.get("Host") or ip
     return ip
 
@@ -77,7 +74,7 @@ def validate_ip(IP: str) -> str:
 
 
 def lookup_ip_address(IP: str) -> IpLookupResponse:
-    reader = geoip2.database.Reader(DB_PATH)
+    reader = geoip2.database.Reader(get_settings().db_path)
     response: City = reader.city(IP)
     return IpLookupResponse(
         country_code=response.country.iso_code,

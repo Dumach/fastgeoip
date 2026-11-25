@@ -6,13 +6,13 @@ FastAPI geo-IP lookup service (FastAPI + uvicorn + geoip2, Python 3.12, managed 
 
 - Copy `sample.env` to `.env` and set at least `ACCESS_KEY` (comma-separated list of accepted `X-API-KEY` values) — required in practice for `PROD`/`DEBUG` (see "Behavior gotchas"). `*.mmdb` and `.env` are gitignored.
 - Requires `db/GeoLite2-City.mmdb` (not in git). Refresh it with `bash db/update.sh` (downloads from jsdelivr, keeps a `.old` backup of the previous database).
-- Start: `uv run main.py` — must run from the repo root: the database path (`./db/GeoLite2-City.mmdb`) and `LOG_PATH` are CWD-relative. `main.py` launches uvicorn with the target string `"src.app:app"` and `src/app.py` imports its config values (`mode`, `ACCESS_KEYS`) from `main`, so the two modules are coupled and paths break if invoked from elsewhere.
+- Start: `uv run main.py` — must run from the repo root: the database path (`./db/GeoLite2-City.mmdb`) and `LOG_PATH` are CWD-relative. `main.py` is a thin launcher: `get_settings()` → `uvicorn.run("src.app:app", ...)`. `src/app.py` reads its config via `get_settings()` — `main` and `app` no longer import each other.
 - `ENVIRONMENT` env var: `DEV` → `--reload`, 1 worker, **auth bypassed** (for easy local testing); `DEBUG` → debug log level; `PROD` (default) → `(cpu_count*2)+1` workers.
 - Optional `SSL_CERT`/`SSL_KEY` (file paths, used together) enable HTTPS in uvicorn.
 
 ## Config (env vars)
 
-These are read at import time by `main.py` (via `load_dotenv()` + `os.environ`) and by `config/logging.py` (which also does its own `load_dotenv()` and creates `LOG_PATH` at import time).
+All env vars flow through `src/config.py` (`Settings`, pydantic-settings): the cached `get_settings()` reads `.env` and real environment variables (the latter win — same precedence as dotenv). `main.py` creates `LOG_PATH` before starting uvicorn; `config/logging.py` is a pure `build_log_config(log_path)` with no env access or import-time side effects.
 
 | Var | Default | Meaning |
 |---|---|---|
@@ -23,6 +23,9 @@ These are read at import time by `main.py` (via `load_dotenv()` + `os.environ`) 
 | `SSL_KEY` | unset | HTTPS key path |
 | `ACCESS_KEY` | empty | comma-separated accepted `X-API-KEY` values |
 | `LOG_PATH` | `./logs` | directory for the rotating `access.log` |
+| `DB_PATH` | `./db/GeoLite2-City.mmdb` | GeoLite2-City database location (new optional override; default = previous hardcoded path) |
+
+`workers` (PROD: `cpu_count*2+1`, otherwise 1) and `log_level` (DEBUG → `debug`, else `info`) are derived in `Settings` properties, not env vars.
 
 ## Behavior gotchas
 

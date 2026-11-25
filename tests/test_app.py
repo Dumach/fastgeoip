@@ -9,8 +9,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.config import Environment as ProductionMode  # temporary alias — fixtures rewritten in the app-factory phase
 from src.model import IpLookupResponse
-from main import ProductionMode
 
 
 def make_mock_city(
