@@ -1,13 +1,13 @@
-"""Uvicorn logging configuration (dictConfig format)."""
+"""Uvicorn logging configuration: console output plus a rotating access log."""
+
+from __future__ import annotations
+
 from pathlib import Path
 
 
-def build_log_config(log_path: Path) -> dict:
-    """Build the dictConfig passed to uvicorn.
-
-    Pure function: the settings object (via log_path) is the only input —
-    no env access, no directory creation here.
-    """
+def build_log_config(log_path: Path, level: str = "info") -> dict:
+    """Build uvicorn's dictConfig; creates log_path if needed."""
+    Path(log_path).mkdir(parents=True, exist_ok=True)
     return {
         "version": 1,
         "disable_existing_loggers": False,
@@ -39,7 +39,7 @@ def build_log_config(log_path: Path) -> dict:
             "file": {
                 "formatter": "default",
                 "class": "logging.handlers.RotatingFileHandler",
-                "filename": str(log_path / "access.log"),
+                "filename": f"{log_path}/access.log",
                 "maxBytes": 1_048_576,  # 1 MB
                 "backupCount": 5,
                 "encoding": "utf-8",
@@ -55,6 +55,13 @@ def build_log_config(log_path: Path) -> dict:
             "uvicorn.access": {
                 "handlers": ["access", "file"],
                 "level": "INFO",
+                "propagate": False,
+            },
+            # App logs (e.g. parse failure tracebacks); mirrors the handlers
+            # the uvicorn.default logger used to provide.
+            "fastpostal": {
+                "handlers": ["default", "file"],
+                "level": level.upper(),  # dictConfig wants level names, e.g. "INFO"
                 "propagate": False,
             },
         },

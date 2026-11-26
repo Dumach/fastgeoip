@@ -1,9 +1,5 @@
-"""FastAPI application factory: builds the app for a given Settings.
+"""FastAPI application factory: builds the app for a given Settings."""
 
-Every piece of per-process state (the slowapi limiter, auth config, rate
-limits) is created inside `create_app`, so each app instance is isolated —
-tests build hermetic apps instead of re-importing the module.
-"""
 import logging
 from ipaddress import ip_address
 
@@ -15,12 +11,12 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from src.config import Environment, Settings, get_settings
-from src.model import IpLookupResponse
+from fastgeoip.config import Environment, Settings, get_settings
+from fastgeoip.models import IpLookupResponse
 
 logger: logging.Logger = logging.getLogger("uvicorn.default")
 
-NO_AUTH_PATHS = {"/geoip/health"}
+NO_AUTH_PATHS = {"/health"}
 
 
 def get_ip_header(request: Request, settings: Settings) -> str:
@@ -45,10 +41,7 @@ def validIPAddress(IP: str) -> bool:
 
 def validate_ip(IP: str) -> str:
     if not validIPAddress(IP):
-        return (
-            "IPv4 or IPv6 address is in an incorrect format. "
-            + "Dotted decimal for IPv4 or textual representation for IPv6 are required."
-        )
+        return "IPv4 or IPv6 address is in an incorrect format."
     ip_addr = ip_address(IP)
     if ip_addr.is_link_local or ip_addr.is_loopback:
         return "You are on localhost"
@@ -95,7 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return await call_next(request)
         return JSONResponse({"detail": "Invalid API key"}, status_code=403)
 
-    @app.get("/geoip/")
+    @app.get("/")
     @limiter.limit("5/minute")
     def get_myip(request: Request) -> JSONResponse:
         ip = get_ip_header(request, settings).strip()
@@ -105,7 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"detail": error})
         return JSONResponse(lookup_ip_address(ip, settings).model_dump())
 
-    @app.get("/geoip/geolookup")
+    @app.get("/geolookup")
     @limiter.limit("60/minute")
     def get_geolookup(request: Request, ip: str) -> JSONResponse:
         ip = ip.strip()
@@ -114,7 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"detail": error})
         return JSONResponse(lookup_ip_address(ip, settings).model_dump())
 
-    @app.get("/geoip/health")
+    @app.get("/health")
     @limiter.limit("5/minute")
     def get_health(request: Request):
         ip = "1.1.1.1"
@@ -131,22 +124,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-_app: FastAPI | None = None
-
-
-def get_app() -> FastAPI:
-    """Process-wide app for the `uvicorn src.app:app` import string."""
-    global _app
-    if _app is None:
-        _app = create_app()
-    return _app
-
-
-def __getattr__(name: str) -> object:
-    # `src.app:app` (uvicorn / systemd import string) resolves `app` here at
-    # first access. Keeping it lazy means importing the module is side-effect
-    # free, so tests can build hermetic apps via create_app(Settings(...))
-    # without touching the repo's env vars or .env.
-    if name == "app":
-        return get_app()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+# Module-level instance so `uvicorn fastgeoip.app:app` (fastgeoip.serve, systemd) keeps working.
+app = create_app()

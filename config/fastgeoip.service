@@ -1,5 +1,5 @@
-# /etc/systemd/system/fastpostal.service
-# Systemd service file for Uvicorn with Gunicorn
+# /etc/systemd/system/fastgeoip.service
+# Systemd service file for the FastGeoIp uvicorn service
 
 [Unit]
 Description=FastGeoIp Service with Uvicorn

@@ -1,10 +1,3 @@
-"""Hermetic app tests.
-
-Apps are built with `create_app(Settings(...))` — no environment variables,
-no `sys.modules` surgery, no dependency on the repo's `.env`. Config tests
-opt out of `.env` entirely via `Settings(_env_file=None, ...)`.
-"""
-import multiprocessing
 from pathlib import Path
 from typing_extensions import Generator
 
@@ -13,8 +6,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
 
-from src.app import create_app
-from src.config import Environment, Settings
+from fastgeoip.app import create_app
+from fastgeoip.config import Environment, Settings
 
 
 def make_mock_city(
@@ -47,29 +40,20 @@ def make_mock_city(
 
 
 @pytest.fixture()
-def settings_prod() -> Settings:
-    return Settings(_env_file=None, environment="PROD", access_key="test-key-123")
+def client_prod() -> TestClient:
+    settings  = Settings(environment="PROD", access_key="test-key-123")
+    return  TestClient(create_app(settings))
 
 
 @pytest.fixture()
-def settings_dev() -> Settings:
-    return Settings(_env_file=None, environment="DEV", access_key="test-key-123")
-
-
-@pytest.fixture()
-def client_prod(settings_prod: Settings) -> TestClient:
-    return TestClient(create_app(settings_prod))
-
-
-@pytest.fixture()
-def client_dev(settings_dev: Settings) -> TestClient:
-    return TestClient(create_app(settings_dev))
+def client_dev() -> TestClient:
+    return TestClient(create_app(Settings(environment="DEV")))
 
 
 @pytest.fixture()
 def mock_geoip_reader() -> Generator[MagicMock]:
     """Fixture that provides a properly mocked geoip2 database reader."""
-    with patch("src.app.geoip2.database.Reader") as mock_reader_class:
+    with patch("fastgeoip.app.geoip2.database.Reader") as mock_reader_class:
         mock_reader = MagicMock()
         mock_reader_class.return_value = mock_reader
         yield mock_reader
@@ -84,7 +68,7 @@ class TestSettings:
         assert s.log_path == Path("./logs")
         assert s.db_path == Path("./db/GeoLite2-City.mmdb")
         assert s.access_keys == []
-        assert s.workers == multiprocessing.cpu_count() * 2 + 1
+        assert s.workers == 1
         assert s.log_level == "info"
 
     def test_environment_is_case_insensitive(self) -> None:
@@ -111,8 +95,8 @@ class TestSettings:
 
 class TestAppFactory:
     def test_lazy_module_level_app_bridge(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """`uvicorn src.app:app` resolves `app` lazily from the module."""
-        from src import app as app_module
+        """`uvicorn fastgeoip.app:app` resolves `app` lazily from the module."""
+        from fastgeoip import app as app_module
 
         monkeypatch.setattr(
             app_module,
@@ -144,7 +128,7 @@ class TestHealthEndpoint:
 class TestGetMyIpEndpoint:
     def test_get_myip_valid_ip(self, client_dev: TestClient, mock_geoip_reader: MagicMock) -> None:
         mock_geoip_reader.city.return_value = make_mock_city("8.8.8.8")
-        with patch("src.app.get_ip_header", return_value="8.8.8.8"):
+        with patch("fastgeoip.app.get_ip_header", return_value="8.8.8.8"):
             response = client_dev.get("/geoip/")
             assert response.status_code == 200
             data = response.json()
@@ -152,25 +136,25 @@ class TestGetMyIpEndpoint:
             assert data["country_code"] == "US"
 
     def test_get_myip_localhost(self, client_dev: TestClient, mock_geoip_reader: MagicMock) -> None:
-        with patch("src.app.get_ip_header", return_value="127.0.0.1"):
+        with patch("fastgeoip.app.get_ip_header", return_value="127.0.0.1"):
             response = client_dev.get("/geoip/")
             assert response.status_code == 200
             assert response.json() == {"detail": "You are on localhost"}
 
     def test_get_myip_private_ip(self, client_dev: TestClient, mock_geoip_reader: MagicMock) -> None:
-        with patch("src.app.get_ip_header", return_value="192.168.1.1"):
+        with patch("fastgeoip.app.get_ip_header", return_value="192.168.1.1"):
             response = client_dev.get("/geoip/")
             assert response.status_code == 200
             assert response.json() == {"detail": "You are on a private network"}
 
     def test_get_myip_invalid_format(self, client_dev: TestClient, mock_geoip_reader: MagicMock) -> None:
-        with patch("src.app.get_ip_header", return_value="not-an-ip"):
+        with patch("fastgeoip.app.get_ip_header", return_value="not-an-ip"):
             response = client_dev.get("/geoip/")
             assert response.status_code == 200
             assert "incorrect format" in response.json()["detail"]
 
     def test_get_myip_requires_auth_in_prod(self, client_prod: TestClient, mock_geoip_reader: MagicMock) -> None:
-        with patch("src.app.get_ip_header", return_value="8.8.8.8"):
+        with patch("fastgeoip.app.get_ip_header", return_value="8.8.8.8"):
             response = client_prod.get("/geoip/")
             assert response.status_code == 403
 
@@ -204,25 +188,25 @@ class TestGeolookupEndpoint:
 class TestAuthMiddleware:
     def test_valid_api_key(self, client_prod: TestClient, mock_geoip_reader: MagicMock) -> None:
         mock_geoip_reader.city.return_value = make_mock_city("8.8.8.8")
-        with patch("src.app.get_ip_header", return_value="8.8.8.8"):
+        with patch("fastgeoip.app.get_ip_header", return_value="8.8.8.8"):
             response = client_prod.get("/geoip/", headers={"X-API-KEY": "test-key-123"})
             assert response.status_code == 200
 
     def test_invalid_api_key_in_prod(self) -> None:
         client = TestClient(create_app(Settings(_env_file=None, environment="PROD", access_key="valid-key")))
-        with patch("src.app.geoip2.database.Reader"):
+        with patch("fastgeoip.app.geoip2.database.Reader"):
             response = client.get("/geoip/", headers={"X-API-KEY": "wrong-key"})
         assert response.status_code == 403
 
     def test_missing_api_key_in_prod(self) -> None:
         client = TestClient(create_app(Settings(_env_file=None, environment="PROD", access_key="valid-key")))
-        with patch("src.app.geoip2.database.Reader"):
+        with patch("fastgeoip.app.geoip2.database.Reader"):
             response = client.get("/geoip/")
         assert response.status_code == 403
 
     def test_dev_mode_bypasses_auth(self, client_dev: TestClient, mock_geoip_reader: MagicMock) -> None:
         mock_geoip_reader.city.return_value = make_mock_city("8.8.8.8")
-        with patch("src.app.get_ip_header", return_value="8.8.8.8"):
+        with patch("fastgeoip.app.get_ip_header", return_value="8.8.8.8"):
             response = client_dev.get("/geoip/")
             assert response.status_code == 200
 
@@ -231,7 +215,7 @@ class TestRateLimiting:
     def test_rate_limit_works(self, client_dev: TestClient, mock_geoip_reader: MagicMock) -> None:
         """Test that rate limiting is enforced (5 requests per minute for /geoip/)."""
         mock_geoip_reader.city.return_value = make_mock_city("1.1.1.1")
-        with patch("src.app.get_ip_header", return_value="1.1.1.1"):
+        with patch("fastgeoip.app.get_ip_header", return_value="1.1.1.1"):
             # Make 5 requests - should succeed
             for _ in range(5):
                 response = client_dev.get("/geoip/")
@@ -243,19 +227,19 @@ class TestRateLimiting:
 
 class TestIpValidation:
     def test_valid_ipv4(self) -> None:
-        from src.app import validIPAddress
+        from fastgeoip.app import validIPAddress
 
         assert validIPAddress("8.8.8.8") is True
         assert validIPAddress("192.168.1.1") is True
 
     def test_valid_ipv6(self) -> None:
-        from src.app import validIPAddress
+        from fastgeoip.app import validIPAddress
 
         assert validIPAddress("2001:0db8:85a3:0000:0000:8a2e:0370:7334") is True
         assert validIPAddress("::1") is True
 
     def test_invalid_ip(self) -> None:
-        from src.app import validIPAddress
+        from fastgeoip.app import validIPAddress
 
         assert validIPAddress("not-an-ip") is False
         assert validIPAddress("999.999.999.999") is False
@@ -264,20 +248,20 @@ class TestIpValidation:
 
 class TestValidateIp:
     def test_loopback(self) -> None:
-        from src.app import validate_ip
+        from fastgeoip.app import validate_ip
 
         assert validate_ip("127.0.0.1") == "You are on localhost"
         assert validate_ip("::1") == "You are on localhost"
 
     def test_private_ipv4(self) -> None:
-        from src.app import validate_ip
+        from fastgeoip.app import validate_ip
 
         assert validate_ip("192.168.1.1") == "You are on a private network"
         assert validate_ip("10.0.0.1") == "You are on a private network"
         assert validate_ip("172.16.0.1") == "You are on a private network"
 
     def test_public_ip(self) -> None:
-        from src.app import validate_ip
+        from fastgeoip.app import validate_ip
 
         assert validate_ip("8.8.8.8") == ""
         assert validate_ip("1.1.1.1") == ""

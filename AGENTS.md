@@ -6,13 +6,13 @@ FastAPI geo-IP lookup service (FastAPI + uvicorn + geoip2, Python 3.12, managed 
 
 - Copy `sample.env` to `.env` and set at least `ACCESS_KEY` (comma-separated list of accepted `X-API-KEY` values) — required in practice for `PROD`/`DEBUG` (see "Behavior gotchas"). `*.mmdb` and `.env` are gitignored.
 - Requires `db/GeoLite2-City.mmdb` (not in git). Refresh it with `bash db/update.sh` (downloads from jsdelivr, keeps a `.old` backup of the previous database).
-- Start: `uv run main.py` — must run from the repo root: the database path (`./db/GeoLite2-City.mmdb`) and `LOG_PATH` are CWD-relative. `main.py` is a thin launcher: `get_settings()` → `uvicorn.run("src.app:app", ...)`. `src/app.py` reads its config via `get_settings()` — `main` and `app` no longer import each other.
+- Start: `uv run serve` (console script → `fastgeoip.main:main`) — must run from the repo root: the database path (`./db/GeoLite2-City.mmdb`) and `LOG_PATH` are CWD-relative. The launcher is thin: `get_settings()` → mkdir log path → `uvicorn.run("fastgeoip.app:app", ...)`. The app is built by the `create_app(settings)` factory in `src/fastgeoip/app.py`; the module-level `app` is a **lazy** PEP 562 `__getattr__` bridge so the uvicorn import string keeps working while `import fastgeoip.app` stays side-effect free.
 - `ENVIRONMENT` env var: `DEV` → `--reload`, 1 worker, **auth bypassed** (for easy local testing); `DEBUG` → debug log level; `PROD` (default) → `(cpu_count*2)+1` workers.
 - Optional `SSL_CERT`/`SSL_KEY` (file paths, used together) enable HTTPS in uvicorn.
 
 ## Config (env vars)
 
-All env vars flow through `src/config.py` (`Settings`, pydantic-settings): the cached `get_settings()` reads `.env` and real environment variables (the latter win — same precedence as dotenv). `main.py` creates `LOG_PATH` before starting uvicorn; `config/logging.py` is a pure `build_log_config(log_path)` with no env access or import-time side effects.
+All env vars flow through `src/fastgeoip/config.py` (`Settings`, pydantic-settings): the cached `get_settings()` reads `.env` and real environment variables (the latter win — same precedence as dotenv). `fastgeoip.main` creates `LOG_PATH` before starting uvicorn; `src/fastgeoip/logging.py` is a pure `build_log_config(log_path)` with no env access or import-time side effects.
 
 | Var | Default | Meaning |
 |---|---|---|
@@ -37,16 +37,16 @@ All env vars flow through `src/config.py` (`Settings`, pydantic-settings): the c
 - IP validation problems (bad format, loopback, private) return **HTTP 200** with a `{"detail": "..."}` body — that is the existing API contract (tests assert it).
 - `lookup_ip_address` opens a fresh `geoip2.database.Reader` per request.
 - `subdivisions.most_specific.name` / `city.name` are accessed unguarded: a database entry without a subdivision or city yields an unhandled 500.
-- Access + error logs go to `LOG_PATH/access.log` (rotating, 1 MB × 5) via `config/logging.py`; application loggers grab the `uvicorn.default` logger (no `src` package entry in the dictConfig — app logs reach the file only by propagation through `uvicorn`).
+- Access + error logs go to `LOG_PATH/access.log` (rotating, 1 MB × 5) via `src/fastgeoip/logging.py`; application loggers grab the `uvicorn.default` logger (no `fastgeoip` package entry in the dictConfig — app logs reach the file only by propagation through `uvicorn`).
 
 ## Verification
 
-- Tests: `uv run pytest` — 23 tests. The `client_prod`/`client_dev` fixtures purge `sys.modules` and rewrite `os.environ` before importing `src.app`, so tests are not hermetic (they depend on import order and the repo's `.env`).
+- Tests: `uv run pytest` — 30 hermetic tests. Fixtures build `Settings(_env_file=None, ...)` explicitly and pass them to `create_app(settings)`: no `os.environ` writes, no `sys.modules` purging, no dependency on the repo's `.env`. The slowapi limiter is created inside `create_app`, so each `TestClient` gets fresh rate-limit buckets (the 429 test relies on this). Config tests opt out of `.env` via `_env_file=None`.
 - Lint: `uv run ruff check .` (rules `E`, `F`; `F401` ignored).
-- No typechecker is configured or run.
+- Typecheck: `uv run ty check .` (ty is a dev dependency). It currently reports a known baseline error: slowapi's `_rate_limit_exceeded_handler` is not a valid exception-handler signature (`src/fastgeoip/app.py`) — to be fixed deliberately, not suppressed.
 
 ## Toolchain & deployment
 
 - `pyproject.toml` sets `[tool.uv] exclude-newer = "7 days"` — dependency resolution only considers packages ≤ 7 days old.
-- The project builds as package `src` (uv_build, `module-name = "src"`, `module-root = ""`). There is no console script; the only entrypoint is `uv run main.py`.
-- Deployed as a systemd service (`config/fastgeoip.service`, `ExecStart=uv run main.py`). Dev environment is Windows; production is Linux.
+- The project builds as package `fastgeoip` (uv_build, `module-name = "fastgeoip"`, `module-root = "src"`), and installs the `serve` console script (`fastgeoip.main:main`) — in the venv that is `.venv/bin/serve`.
+- Deployed as a systemd service (`config/fastgeoip.service`, `ExecStart=/opt/fastgeoip/.venv/bin/serve`); `config/fix_permissions.sh` sets the ownership/permissions for that layout (root-owned, group `fastapi` readable, group-executable venv). Dev environment is Windows; production is Linux.

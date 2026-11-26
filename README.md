@@ -44,7 +44,7 @@ cp sample.env .env
 bash db/update.sh
 
 # 4. Run (from the repo root — paths are CWD-relative)
-uv run main.py
+uv run serve
 ```
 
 The server listens on `HOST:PORT` (default `127.0.0.1:8080`). `SSL_CERT`/`SSL_KEY` enable HTTPS.
@@ -72,6 +72,7 @@ Configuration is read from environment variables and `.env` (real environment va
 ```bash
 uv run pytest        # test suite
 uv run ruff check .  # lint
+uv run ty check .    # typecheck (one known baseline error, see AGENTS.md)
 ```
 
 For development set `ENVIRONMENT=DEV`: uvicorn runs with `--reload`, a single worker and without auth checks.

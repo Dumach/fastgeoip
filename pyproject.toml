@@ -16,8 +16,11 @@ readme = "README.md"
 description = "Fastapi based geopIP server, results based on GeoLite2-City dataset"
 keywords = ["fastapi", "geoip"]
 classifiers = [
-   "Development Status :: 4 - Beta" 
+   "Development Status :: 4 - Beta"
 ]
+
+[project.scripts]
+serve = "fastgeoip.serve:serve"
 
 [tool.uv]
 exclude-newer = "7 days"
@@ -43,5 +46,5 @@ dev = [
 ]
 
 [tool.uv.build-backend]
-module-name = "src"
-module-root = ""
+module-name = "fastgeoip"
+module-root = "src"

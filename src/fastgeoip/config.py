@@ -1,11 +1,7 @@
-"""Centralized runtime configuration: the single source of truth for env vars.
+"""Application settings loaded from the environment and .env."""
 
-Real environment variables take precedence over `.env` values (pydantic-settings
-handles both; no manual `load_dotenv()` needed).
-"""
 from __future__ import annotations
 
-import multiprocessing
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
@@ -58,7 +54,13 @@ class Settings(BaseSettings):
 
     @property
     def workers(self) -> int:
-        return multiprocessing.cpu_count() * 2 + 1 if self.environment == Environment.PROD else 1
+        """
+        PROD scales to the CPU core count; other modes use a single worker.
+        we used too much memory and for the number of requests a single worker is enough
+
+        Formula: return multiprocessing.cpu_count() if self.environment == Environment.PROD else 1
+        """
+        return 1
 
 
 @lru_cache
