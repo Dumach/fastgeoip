@@ -15,6 +15,9 @@ def serve() -> None:
         # One-line error instead of a pydantic traceback.
         raise SystemExit(f"Configuration error:\n{exc}") from exc
 
+    if not settings.db_path.is_file():
+        raise SystemExit(f"GeoLite2 database not found: {settings.db_path} (run db/update.sh first)")
+
     uvicorn.run(
         "fastgeoip.app:app",
         host=settings.host,
@@ -26,7 +29,7 @@ def serve() -> None:
         ssl_keyfile=settings.ssl_key,
         workers=settings.workers,
         proxy_headers=True,  # Trust X-Forwarded headers from reverse proxy
-        forwarded_allow_ips="*",  # Allow forwarded headers from any IP (tightened in a later phase)
+        forwarded_allow_ips=settings.forwarded_allow_ips,  # Only trusted proxies
     )
 
 

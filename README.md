@@ -6,9 +6,9 @@ FastAPI based geoIP lookup service. Results are based on the [GeoLite2-City](htt
 
 | Method | Path | Auth | Rate limit | Description |
 |---|---|---|---|---|
-| `GET` | `/geoip/` | yes (DEV bypasses) | 5/min | Look up the client IP (from the connection, or `X-Forwarded-For` when proxied) |
-| `GET` | `/geoip/geolookup?ip=<ip>` | yes (DEV bypasses) | 60/min | Look up the given IP address |
-| `GET` | `/geoip/health` | no | 5/min | Health check: performs a real database lookup and reports `healthy` / `unhealthy` (503) |
+| `GET` | `/` | yes (DEV bypasses) | 5/min | Look up the client IP (from the connection, or `X-Forwarded-For` when proxied) |
+| `GET` | `/geolookup?ip=<ip>` | yes (DEV bypasses) | 60/min | Look up the given IP address |
+| `GET` | `/health` | no | 5/min | Health check: performs a real database lookup and reports `healthy` / `unhealthy` (503) |
 
 Successful lookups return:
 
@@ -26,7 +26,7 @@ Invalid, loopback or private input IPs return HTTP 200 with a `{"detail": "..."}
 
 ## Authentication
 
-Requests need an `X-API-KEY` header matching one of the comma-separated keys in `ACCESS_KEY`. Wrong or missing keys get a `403` (`/geoip/health` is exempt). With `ENVIRONMENT=DEV` the check is bypassed, for easy local testing.
+Requests need an `X-API-KEY` header matching one of the comma-separated keys in `ACCESS_KEY`. Wrong or missing keys get a `403` (`/health` is exempt); failed attempts are logged with method, path and client IP. With `ENVIRONMENT=DEV` the check is bypassed, for easy local testing.
 
 ## Getting started
 
@@ -47,7 +47,7 @@ bash db/update.sh
 uv run serve
 ```
 
-The server listens on `HOST:PORT` (default `127.0.0.1:8080`). `SSL_CERT`/`SSL_KEY` enable HTTPS.
+The server listens on `HOST:PORT` (default `127.0.0.1:8080`). `SSL_CERT`/`SSL_KEY` enable HTTPS. The server validates its configuration at startup and exits with a readable one-shot error (no traceback) if `ACCESS_KEY` is missing in `PROD`/`DEBUG`, the SSL pair is incomplete or points to missing files, or the GeoLite2 database is missing. OpenAPI docs (`/docs`, `/redoc`, `/openapi.json`) are disabled; this README is the API reference.
 
 ## Configuration
 
@@ -55,13 +55,14 @@ Configuration is read from environment variables and `.env` (real environment va
 
 | Var | Default | Meaning |
 |---|---|---|
-| `ENVIRONMENT` | `PROD` | `DEV` (reload, 1 worker, no auth), `DEBUG` (debug logs) or `PROD` (`(cpu_count*2)+1` workers) |
+| `ENVIRONMENT` | `PROD` | `DEV` (reload, no auth), `DEBUG` (debug logs) or `PROD` (default). All modes run a single worker. |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8080` | Bind port |
-| `SSL_CERT` | — | Path to the TLS certificate (used with `SSL_KEY`) |
-| `SSL_KEY` | — | Path to the TLS private key |
-| `ACCESS_KEY` | — | Comma-separated list of accepted `X-API-KEY` values |
+| `SSL_CERT` | — | Path to the TLS certificate (must be set together with `SSL_KEY`) |
+| `SSL_KEY` | — | Path to the TLS private key (must be set together with `SSL_CERT`) |
+| `ACCESS_KEY` | — | Comma-separated list of accepted `X-API-KEY` values. **Required** in `PROD`/`DEBUG` — the server refuses to start without it. |
 | `LOG_PATH` | `./logs` | Directory for the rotating `access.log` (1 MB × 5) |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1,::1` | Peers trusted for `X-Forwarded-For` (raise only if your reverse proxy is remote) |
 
 ## Database
 
@@ -76,6 +77,8 @@ uv run ty check .    # typecheck (one known baseline error, see AGENTS.md)
 ```
 
 For development set `ENVIRONMENT=DEV`: uvicorn runs with `--reload`, a single worker and without auth checks.
+
+Layout: `serve.py` starts uvicorn after fail-fast validation, `asgi.py` exposes the module-level `app` for uvicorn, `app.py` builds it via `create_app(settings)`, `geoip_service.py` is the only module that imports `geoip2` (one cached reader per database path), and `config.py` / `logging_config.py` are pure helpers fed by settings.
 
 ## Production deployment (systemd)
 

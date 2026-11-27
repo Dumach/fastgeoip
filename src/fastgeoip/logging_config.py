@@ -57,9 +57,9 @@ def build_log_config(log_path: Path, level: str = "info") -> dict:
                 "level": "INFO",
                 "propagate": False,
             },
-            # App logs (e.g. parse failure tracebacks); mirrors the handlers
-            # the uvicorn.default logger used to provide.
-            "fastpostal": {
+            # App logs (auth warnings, tracebacks) keep the handlers the
+            # uvicorn.default logger used to provide.
+            "fastgeoip": {
                 "handlers": ["default", "file"],
                 "level": level.upper(),  # dictConfig wants level names, e.g. "INFO"
                 "propagate": False,
