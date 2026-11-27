@@ -34,7 +34,8 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.12 (managed by uv via `.p
 
 ```bash
 # 1. Install dependencies (creates .venv)
-uv sync
+uv sync --frozen --python /usr/bin/python3 --no-python-downloads
+readlink -f .venv/bin/python
 
 # 2. Configure
 cp sample.env .env
