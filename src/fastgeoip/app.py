@@ -18,7 +18,7 @@ from fastgeoip.models import InternalServerErrorResponse, UnauthorizedResponse
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-NO_AUTH_PATHS = {"/health"}
+NO_AUTH_PATHS = {"/", "/health"}
 
 
 def rate_limit_handler(request: Request, exc: Exception) -> Response:
