@@ -76,16 +76,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).model_dump(),
         )
 
-    @app.get("/")
-    @limiter.limit("10/minute")
-    def get_myip(request: Request) -> JSONResponse:
-        ip = get_ip_header(request, settings).strip()
-
-        error = validate_ip(ip)
-        if error != "":
-            return JSONResponse({"detail": error})
-        return JSONResponse(lookup_ip_address(ip, settings).model_dump())
-
     @app.get("/geolookup")
     @limiter.limit("10/minute")
     def get_geolookup(request: Request, ip: str) -> JSONResponse:

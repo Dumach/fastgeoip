@@ -23,36 +23,6 @@ class TestHealth:
         assert response.json() == {"detail": "unhealthy"}
 
 
-class TestGetMyIpEndpoint:
-    def test_valid_ip(
-        self, client_dev: TestClient, mock_geoip_reader: MagicMock, make_mock_city: Callable[..., MagicMock]
-    ) -> None:
-        mock_geoip_reader.city.return_value = make_mock_city("8.8.8.8")
-        with patch("fastgeoip.app.get_ip_header", return_value="8.8.8.8"):
-            response = client_dev.get("/")
-        assert response.status_code == 200
-        assert response.json()["ip"] == "8.8.8.8"
-        assert response.json()["country_code"] == "US"
-
-    def test_localhost(self, client_dev: TestClient) -> None:
-        with patch("fastgeoip.app.get_ip_header", return_value="127.0.0.1"):
-            response = client_dev.get("/")
-        assert response.status_code == 200
-        assert response.json() == {"detail": "You are on localhost"}
-
-    def test_private_ip(self, client_dev: TestClient) -> None:
-        with patch("fastgeoip.app.get_ip_header", return_value="192.168.1.1"):
-            response = client_dev.get("/")
-        assert response.status_code == 200
-        assert response.json() == {"detail": "You are on a private network"}
-
-    def test_invalid_format(self, client_dev: TestClient) -> None:
-        with patch("fastgeoip.app.get_ip_header", return_value="not-an-ip"):
-            response = client_dev.get("/")
-        assert response.status_code == 200
-        assert "incorrect format" in response.json()["detail"]
-
-
 class TestGeolookupEndpoint:
     def test_valid_ip(
         self, client_dev: TestClient, mock_geoip_reader: MagicMock, make_mock_city: Callable[..., MagicMock]
